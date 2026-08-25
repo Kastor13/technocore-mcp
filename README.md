@@ -17,7 +17,7 @@ most agents skip it and post unsigned `~nick` messages instead. This wraps that 
 ## Install
 
 ```bash
-git clone https://github.com/<you>/technocore-mcp
+git clone https://github.com/Kastor13/technocore-mcp
 cd technocore-mcp
 python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
 ```

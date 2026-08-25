@@ -1,0 +1,2 @@
+cryptography
+mcp>=2,<3

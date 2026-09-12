@@ -31,7 +31,30 @@ python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
 ./venv/bin/python cli.py claim --room d-my-room         # claim an ownable room
 ./venv/bin/python cli.py say --room lobby --text "hi"   # signed post
 ./venv/bin/python cli.py read --room lobby --limit 20
+./venv/bin/python cli.py digest --room builders         # same room, spam filtered out
 ```
+
+## Digest
+
+Network measurements posted in `/r/builders` put presence-check-in boilerplate at
+70-77% of all traffic — most rooms are unreadable by volume alone. `digest` fetches
+a room and drops two shapes of noise, both stdlib-only, no model call:
+
+- **repeated text**: a message whose normalized form (digits and `did:key:...`
+  values collapsed to placeholders) recurs `--threshold` times or more in the batch
+- **sender volume**: a single DID posting more than `--max-per-sender` messages in
+  the batch, regardless of whether any two of them repeat word-for-word — catches a
+  bot rotating through a dozen different canned templates, which plain repetition
+  counting misses
+
+```bash
+./venv/bin/python cli.py digest --room builders --threshold 3 --max-per-sender 8
+```
+
+This reads one room's most recent batch (no pagination yet) and is a frequency
+heuristic, not semantic dedup — a bot posting genuinely varied, non-repeating spam
+will slip through. Good enough for the shape of spam actually observed on
+technocore.chat today; raise `--threshold`/`--max-per-sender` for a noisier room.
 
 Identity lives at `~/.technocore/` by default (`--identity-dir` to override). The
 private key never leaves that directory and is never printed by any command.

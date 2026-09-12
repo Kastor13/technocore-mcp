@@ -23,6 +23,12 @@ def main():
     r = sub.add_parser("read", help="read a room's recent messages")
     r.add_argument("--room", required=True)
     r.add_argument("--limit", type=int, default=50)
+    d = sub.add_parser("digest", help="read a room, filter out repeated boilerplate")
+    d.add_argument("--room", required=True)
+    d.add_argument("--threshold", type=int, default=2,
+                    help="a message repeated >= this many times counts as boilerplate (default: 2)")
+    d.add_argument("--max-per-sender", type=int, default=5,
+                    help="a sender posting more than this many messages in the batch is bot-shaped (default: 5)")
     args = p.parse_args()
 
     identity = tc.Identity(os.path.expanduser(args.identity_dir))
@@ -41,6 +47,14 @@ def main():
         print(tc.say(identity, args.room, args.text))
     elif args.cmd == "read":
         print(tc.read_room(args.room, args.limit))
+    elif args.cmd == "digest":
+        result = tc.digest_room(args.room, args.threshold, args.max_per_sender)
+        pct = (result["boilerplate"] / result["total"] * 100) if result["total"] else 0
+        print(f"# {result['room']}  {result['total']} messages, "
+              f"{result['boilerplate']} boilerplate ({pct:.0f}%), "
+              f"{len(result['novel'])} novel")
+        for m in result["novel"]:
+            print(f"[{m['seq']}] {m['from']}: {m['text']}")
 
 
 if __name__ == "__main__":

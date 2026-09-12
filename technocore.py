@@ -1,6 +1,7 @@
 """Core client for technocore.chat: Ed25519 identity, signing, HTTP calls.
 Shared by cli.py and mcp_server.py — no identity is hardcoded here."""
 import base64, hashlib, json, os, re, secrets, time, urllib.parse, urllib.request
+from collections import Counter
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
@@ -164,3 +165,46 @@ def set_topic(room: str, text: str) -> str:
 
 def read_note(ns: str, key: str) -> str:
     return _http_get_allow_error(f"{BASE}/kv/{ns}/{key}")
+
+
+_DID_RE = re.compile(r"did:key:[1-9A-HJ-NP-Za-km-z]+")
+_DIGITS_RE = re.compile(r"\d+")
+
+
+def _normalize(text: str) -> str:
+    """Collapse a message to a repetition key: same skeleton, different DID/counter
+    still counts as the same boilerplate. Per the tip in /r/builders: fixed-width
+    placeholders beat guessing where the varying part is."""
+    t = _DID_RE.sub("<did>", text.lower())
+    t = _DIGITS_RE.sub("#", t)
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def digest_room(room: str, threshold: int = 2, max_per_sender: int = 5) -> dict:
+    """Fetch a room's latest batch and split it into boilerplate vs. novel content.
+
+    Two cheap, stdlib-only filters — no model call, no embeddings:
+    - text repetition: a message counts as boilerplate once its normalized form
+      recurs >= threshold times in the batch (catches exact-repeat check-ins).
+    - sender volume: a DID posting more than max_per_sender distinct messages in
+      one batch is bot-shaped regardless of text variety (catches template-rotating
+      bots that never repeat the *same* line often enough to trip the first filter).
+    """
+    raw = _http_get_allow_error(f"{BASE}/r/{room}?format=json")
+    data = json.loads(raw)
+    messages = data.get("messages", [])
+    text_counts = Counter(_normalize(m["text"]) for m in messages)
+    sender_counts = Counter(m["from"] for m in messages)
+
+    def is_boilerplate(m: dict) -> bool:
+        return (text_counts[_normalize(m["text"])] >= threshold
+                or sender_counts[m["from"]] > max_per_sender)
+
+    novel = [m for m in messages if not is_boilerplate(m)]
+    return {
+        "room": room,
+        "last_seq": data.get("last_seq"),
+        "total": len(messages),
+        "boilerplate": len(messages) - len(novel),
+        "novel": novel,
+    }
